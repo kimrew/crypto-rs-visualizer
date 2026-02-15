@@ -1,141 +1,126 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-export default function Home() {
-  const [matrix, setMatrix] = useState<any[]>([]);
-  const [timeBar, setTimeBar] = useState('1H'); // 기본값 1시간
+export default function RSVisualizer() {
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [interval, setInterval] = useState('1h'); // 기본 1시간 설정
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      // 선택된 시간 단위(timeBar)를 쿼리 파라미터로 전달
-      const res = await fetch(`/api/market?bar=${timeBar}`);
-      const data = await res.json();
-      if (data.matrix) {
-        setMatrix(data.matrix);
-      }
-    } catch (e) {
-      console.error("Matrix fetch error:", e);
-    }
-    setLoading(false);
-  };
-
-  // timeBar가 변경될 때마다 데이터를 다시 불러옵니다.
   useEffect(() => {
-    fetchData();
-    // 장기 단위(1D, 1W, 1M)는 데이터가 자주 바뀌지 않으므로 갱신 주기를 조절해도 좋습니다.
-    const interval = setInterval(fetchData, 60000); 
-    return () => clearInterval(interval);
-  }, [timeBar]);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/market?interval=${interval}`);
+        const result = await res.json();
+        if (result.data) {
+          setData(result.data);
+        }
+      } catch (error) {
+        console.error('Data fetch error:', error);
+      }
+      setLoading(false);
+    };
 
-  // ✨ 상대 강도에 따른 배경색 계산 (상승: 빨강, 하락: 파랑, 보합: 회색)
-  const getCellColor = (change: number) => {
-    // 변화율의 절대값에 따라 색상의 밝기(진함 정도)를 결정 (최대 255)
-    const intensity = Math.min(Math.abs(change) * 35, 200); 
-    
-    if (change > 0.05) {
-      // 상승 구간: 진한 빨강 계열
-      return `rgb(${intensity + 55}, 40, 40)`;
-    } else if (change < -0.05) {
-      // 하락 구간: 진한 파랑 계열
-      return `rgb(40, 40, ${intensity + 55})`;
-    }
-    // 0% 근처 보합 구간: 어두운 회색
-    return '#1a1a1a';
-  };
+    fetchData();
+    // 1분마다 자동 새로고침 (웹훅 데이터 반영 확인용)
+    const timer = setInterval(fetchData, 60000);
+    return () => clearInterval(timer);
+  }, [interval]);
 
   return (
-    <div className="p-4 bg-black min-h-screen text-gray-300 font-mono text-[10px]">
-      {/* 헤더 영역 */}
-      <header className="flex justify-between items-center mb-6 border-b border-gray-800 pb-3">
+    <div className="min-h-screen bg-black text-white p-4 md:p-8">
+      {/* 헤더 섹션 */}
+      <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-sm font-bold text-white uppercase tracking-widest">
-            Money Flow Timeline
+          <h1 className="text-3xl font-black tracking-tighter text-yellow-500">
+            MINERVINI RS TRACKER
           </h1>
-          <p className="text-[8px] text-gray-500 mt-1">Sorted by OKX 24h Volume</p>
+          <p className="text-gray-400 text-sm mt-1">
+            시장 지수(TOTAL) 대비 상대적 강세를 보이는 주도주 발굴
+          </p>
         </div>
 
-        {/* 시간 단위 선택 버튼 (1W, 1M 포함) */}
-        <div className="flex gap-1 bg-gray-900 p-1 rounded-lg">
-          {['1H', '4H', '1D', '1W', '1M'].map((bar) => (
+        {/* 타임프레임 선택 버튼 */}
+        <div className="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
+          {['1h', '4h', '1d'].map((t) => (
             <button
-              key={bar}
-              onClick={() => {
-                setTimeBar(bar);
-                setMatrix([]); // 전환 시 이전 데이터 초기화로 깜빡임 방지
-              }}
-              className={`px-3 py-1 rounded-md text-[9px] transition-all ${
-                timeBar === bar
-                  ? 'bg-white text-black font-bold'
-                  : 'text-gray-500 hover:text-gray-300'
+              key={t}
+              onClick={() => setInterval(t)}
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
+                interval === t ? 'bg-yellow-500 text-black' : 'hover:bg-gray-800 text-gray-400'
               }`}
             >
-              {bar}
+              {t.toUpperCase()}
             </button>
           ))}
         </div>
-      </header>
+      </div>
 
-      {/* 메인 매트릭스 테이블 */}
-      {loading && matrix.length === 0 ? (
-        <div className="text-center py-24 text-gray-600 animate-pulse">
-          Synchronizing Market Data...
+      {loading && data.length === 0 ? (
+        <div className="flex justify-center items-center h-64 text-gray-500 animate-pulse">
+          시장 주도주 분석 중...
         </div>
       ) : (
-        <div className="overflow-x-auto scrollbar-hide border border-gray-800 rounded-lg">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-900/50">
-                <th className="sticky left-0 bg-gray-900 p-2 text-left border-r border-gray-800 w-20 z-20 text-white">
-                  Asset
-                </th>
-                {matrix[0]?.history.map((h: any, i: number) => (
-                  <th key={i} className="p-1 border-r border-gray-800 font-thin text-[8px] text-gray-500 min-w-[35px]">
-                    {h.time}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.map((row: any) => (
-                <tr key={row.symbol} className="h-6 hover:opacity-80 transition-opacity">
-                  {/* 코인 이름 열 (좌측 고정) */}
-                  <td className="sticky left-0 bg-[#050505] p-2 font-bold border-r border-gray-800 text-white z-10 shadow-[2px_0_10px_rgba(0,0,0,0.8)]">
-                    {row.symbol}
-                  </td>
-                  {/* 시간대별 강도 셀 */}
-                  {row.history.map((cell: any, i: number) => (
-                    <td
-                      key={i}
-                      className="border border-black/20 relative group"
-                      style={{ backgroundColor: getCellColor(cell.change) }}
-                    >
-                      {/* 마우스 호버 시 상세 퍼센트 표시 */}
-                      <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-white text-black text-[8px] rounded z-30 whitespace-nowrap shadow-xl">
-                        {row.symbol} {cell.time}: {cell.change.toFixed(2)}%
-                      </div>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {data.map((item: any) => {
+            const isLeader = item.rs_rating >= 90;
+            const isStrong = item.rs_rating >= 70 && item.rs_rating < 90;
+
+            return (
+              <div
+                key={item.symbol}
+                className={`relative overflow-hidden p-5 rounded-xl border transition-all hover:scale-[1.02] ${
+                  isLeader 
+                    ? 'border-yellow-500 bg-gradient-to-br from-yellow-500/20 to-black shadow-[0_0_15px_rgba(234,179,8,0.2)]' 
+                    : isStrong 
+                      ? 'border-blue-500 bg-gray-900/50' 
+                      : 'border-gray-800 bg-gray-900/30'
+                }`}
+              >
+                {/* 배경 장식 (Leader 전용) */}
+                {isLeader && (
+                  <div className="absolute -top-4 -right-4 w-12 h-12 bg-yellow-500 rotate-45 opacity-20" />
+                )}
+
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-lg font-bold tracking-tight">
+                    {item.symbol.replace('USDT', '')}
+                  </span>
+                  {isLeader && (
+                    <span className="text-[10px] font-black bg-yellow-500 text-black px-1.5 py-0.5 rounded italic">
+                      LEADER
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-end gap-1 mb-2">
+                  <span className={`text-4xl font-black leading-none ${isLeader ? 'text-yellow-500' : 'text-white'}`}>
+                    {item.rs_rating}
+                  </span>
+                  <span className="text-xs text-gray-500 font-bold mb-1">RS RATING</span>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t border-white/5">
+                  <div className={`text-sm font-bold ${item.change_p >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                    {item.change_p >= 0 ? '+' : ''}{item.change_p.toFixed(2)}%
+                  </div>
+                  <div className="text-[10px] text-gray-500 font-mono">
+                    ${item.current_price > 1 ? item.current_price.toLocaleString() : item.current_price.toFixed(4)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* 하단 정보 및 범례 */}
-      <footer className="mt-10 pt-6 border-t border-gray-900 flex flex-col md:flex-row justify-between items-center gap-4 opacity-40">
-        <div className="text-[9px]">
-          &copy; 2026 Crypto Flow Visualizer • OKX SPOT API
+      {/* 데이터 없을 때 안내 */}
+      {!loading && data.length === 0 && (
+        <div className="text-center py-20 border border-dashed border-gray-800 rounded-2xl">
+          <p className="text-gray-500">데이터가 없습니다. 트레이딩뷰 웹훅 신호를 기다려주세요.</p>
         </div>
-        <div className="flex items-center gap-3 text-[9px]">
-          <span className="text-blue-500 italic">Weak (Outflow)</span>
-          <div className="w-32 h-1.5 bg-gradient-to-r from-blue-900 via-gray-800 to-red-900 rounded-full"></div>
-          <span className="text-red-500 italic">Strong (Inflow)</span>
-        </div>
-      </footer>
+      )}
     </div>
   );
 }

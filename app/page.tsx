@@ -9,11 +9,14 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/market');
-        if (!res.ok) throw new Error('Network response was not ok');
+        // 주소 앞에 window.location.origin을 붙여서 경로를 확실히 합니다.
+        const res = await fetch(`${window.location.origin}/api/market`);
         const newItem = await res.json();
         
-        if (newItem && !newItem.error) { // 에러 데이터가 아닐 때만 추가
+        // 데이터가 정상적으로 왔는지 확인 (콘솔창에서 확인 가능)
+        console.log("Received data:", newItem);
+
+        if (newItem && !newItem.error) {
           setData(prev => {
             const updated = [...prev, newItem];
             return updated.length > 20 ? updated.slice(1) : updated;
@@ -24,7 +27,7 @@ export default function Home() {
       }
     };
 
-    const interval = setInterval(fetchData, 3000); // 3초마다 업데이트
+    const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
   }, []);
 

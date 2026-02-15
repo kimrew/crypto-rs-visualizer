@@ -10,14 +10,18 @@ export default function Home() {
     const fetchData = async () => {
       try {
         const res = await fetch('/api/market');
+        if (!res.ok) throw new Error('Network response was not ok');
         const newItem = await res.json();
         
-        setData(prev => {
-          const updated = [...prev, newItem];
-          if (updated.length > 20) return updated.slice(1); // 데이터가 너무 많아지면 앞부분 삭제
-          return updated;
-        });
-      } catch (e) { console.error("Fetch error", e); }
+        if (newItem && !newItem.error) { // 에러 데이터가 아닐 때만 추가
+          setData(prev => {
+            const updated = [...prev, newItem];
+            return updated.length > 20 ? updated.slice(1) : updated;
+          });
+        }
+      } catch (e) { 
+        console.error("Fetch error", e); 
+      }
     };
 
     const interval = setInterval(fetchData, 3000); // 3초마다 업데이트

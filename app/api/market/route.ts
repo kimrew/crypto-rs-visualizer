@@ -3,65 +3,63 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  // bar 파라미터에 따라 조회 기간을 결정 (기본 1H 로직)
-  const bar = searchParams.get('bar') || '1H';
-
+export async function GET() {
   try {
     /**
-     * 1. DB에서 최신 데이터 가져오기
-     * - 최근 30개의 타임스탬프(수집 시점)에 해당하는 데이터를 가져옵니다.
-     * - 5분마다 수집한다고 가정할 때, 약 150분치 데이터를 가져오게 됩니다.
+     * 1. DB에서 데이터 조회
+     * - 최근 24개(24시간)의 타임스탬프를 먼저 찾고, 해당 시점의 모든 코인 데이터를 가져옵니다.
+     * - 'NOW() - INTERVAL' 대신 'DISTINCT timestamp'를 쓰는 이유는 
+     * 수집이 잠깐 멈췄더라도 차트의 가로축 칸이 비지 않게 하기 위함입니다.
      */
     const { rows } = await sql`
-      SELECT symbol, change_p, timestamp 
-      FROM market_data 
-      WHERE timestamp IN (
+      WITH latest_times AS (
         SELECT DISTINCT timestamp 
         FROM market_data 
         ORDER BY timestamp DESC 
-        LIMIT 30
+        LIMIT 24 -- 최근 24시간치 노출 (원하는 시간만큼 조절 가능)
       )
-      ORDER BY timestamp ASC, symbol ASC;
+      SELECT symbol, change_p, timestamp 
+      FROM market_data 
+      WHERE timestamp IN (SELECT timestamp FROM latest_times)
+      ORDER BY symbol ASC, timestamp ASC;
     `;
 
     if (!rows || rows.length === 0) {
-      return NextResponse.json({ matrix: [], message: "No data in DB yet." });
+      return NextResponse.json({ matrix: [] });
     }
 
     /**
-     * 2. 데이터를 프론트엔드용 Matrix 구조로 변환
-     * 목표 구조: [{ symbol: 'BTC', history: [{ time: '12:00', change: 1.2 }, ...] }, ...]
+     * 2. 데이터를 심볼별로 그루핑 (Matrix 구조 변환)
+     * 결과 예시: [{ symbol: 'BTC', history: [{ time: '14:00', change: 1.5 }, ...] }, ...]
      */
-    const matrixMap: Record<string, any> = {};
+    const symbolMap: Record<string, any> = {};
 
     rows.forEach((row) => {
-      if (!matrixMap[row.symbol]) {
-        matrixMap[row.symbol] = {
-          symbol: row.symbol,
-          history: [],
+      const { symbol, change_p, timestamp } = row;
+      
+      if (!symbolMap[symbol]) {
+        symbolMap[symbol] = {
+          symbol: symbol,
+          history: []
         };
       }
 
-      // 시간 표시 포맷 설정
-      const dateObj = new Date(row.timestamp);
-      const timeLabel = bar === '1D' || bar === '1W' || bar === '1M'
-        ? `${dateObj.getMonth() + 1}/${dateObj.getDate()}`
-        : `${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+      // 시간 포맷 (14:00, 15:00 등)
+      const date = new Date(timestamp);
+      const timeLabel = `${date.getHours()}:00`;
 
-      matrixMap[row.symbol].history.push({
+      symbolMap[symbol].history.push({
         time: timeLabel,
-        change: parseFloat(row.change_p),
+        change: parseFloat(change_p)
       });
     });
 
-    // 객체를 배열로 변환
-    const matrix = Object.values(matrixMap);
+    // 객체를 배열로 변환하여 반환
+    const matrix = Object.values(symbolMap);
 
     return NextResponse.json({ matrix });
   } catch (error: any) {
-    console.error("Database Fetch Error:", error);
+    console.error("Market API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

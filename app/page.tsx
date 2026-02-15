@@ -9,21 +9,19 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 주소 앞에 window.location.origin을 붙여서 경로를 확실히 합니다.
-        const res = await fetch(`${window.location.origin}/api/market`);
+        // 주소를 아래처럼 '/api/market'으로만 단순하게 적어보세요.
+        const res = await fetch('/api/market', { cache: 'no-store' });
         const newItem = await res.json();
         
-        // 데이터가 정상적으로 왔는지 확인 (콘솔창에서 확인 가능)
-        console.log("Received data:", newItem);
-
-        if (newItem && !newItem.error) {
+        // 이 newItem이 잘 들어오는지 확인하는 게 핵심입니다.
+        if (newItem && newItem.btc !== "0.01") { 
           setData(prev => {
             const updated = [...prev, newItem];
             return updated.length > 20 ? updated.slice(1) : updated;
           });
         }
-      } catch (e) { 
-        console.error("Fetch error", e); 
+      } catch (e) {
+        console.error("Fetch error:", e);
       }
     };
 

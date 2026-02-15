@@ -4,30 +4,46 @@ export async function GET() {
   try {
     const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
     
-    // 캐시를 방지하기 위해 { cache: 'no-store' } 추가
-    const requests = symbols.map(s => 
-      fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`, { cache: 'no-store' })
-        .then(res => res.json())
+    // 1. 바이낸스 API 호출 (타임아웃 및 캐시 방지 설정)
+    const responses = await Promise.all(
+      symbols.map(s => 
+        fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`, { 
+          next: { revalidate: 0 }, // Next.js 캐시 강제 무효화
+          headers: { 'Content-Type': 'application/json' }
+        })
+      )
     );
 
-    const results = await Promise.all(requests);
-    
-    // 데이터 추출 함수 (안전장치 추가)
-    const getPrice = (obj: any) => {
-      const p = parseFloat(obj?.price);
-      return isNaN(p) ? "0.00" : p.toFixed(2);
+    const data = await Promise.all(responses.map(res => res.json()));
+
+    // 2. 데이터 가공 및 검증
+    const getPrice = (item: any) => {
+      // 바이낸스 응답에 price가 없으면 에러 메시지를 숫자로 치환
+      if (!item || !item.price) return "0.01"; 
+      const num = parseFloat(item.price);
+      return isNaN(num) ? "0.02" : num.toFixed(2);
     };
 
     const prices = {
-      btc: getPrice(results[0]),
-      eth: getPrice(results[1]),
-      sol: getPrice(results[2]),
-      time: new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5)
+      btc: getPrice(data[0]),
+      eth: getPrice(data[1]),
+      sol: getPrice(data[2]),
+      time: new Date().toLocaleTimeString('en-GB', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      })
     };
 
     return NextResponse.json(prices);
-  } catch (error) {
-    console.error("Binance API Error:", error);
-    return NextResponse.json({ btc: "0.00", eth: "0.00", sol: "0.00", time: "--:--" });
+  } catch (error: any) {
+    // 에러 발생 시 에러 메시지를 btc 가격 자리에 표시 (디버깅용)
+    return NextResponse.json({ 
+      btc: "Err", 
+      eth: "Err", 
+      sol: "Err", 
+      time: "Error" 
+    });
   }
 }

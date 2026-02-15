@@ -44,7 +44,10 @@ export default function Home() {
             <div key={coin} className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
               <p className="text-zinc-400 text-sm font-medium">{coin} Price</p>
               <p className="text-2xl font-mono mt-1">
-                ${data.length > 0 ? data[data.length-1][coin.toLowerCase()] : 'Loading...'}
+                {/* NaN이거나 데이터가 없으면 'Updating...' 표시 */}
+                {data.length > 0 && data[data.length-1][coin.toLowerCase()] !== "NaN" 
+                  ? `$${data[data.length-1][coin.toLowerCase()]}` 
+                  : 'Updating...'}
               </p>
             </div>
           ))}

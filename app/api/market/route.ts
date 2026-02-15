@@ -2,25 +2,32 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // 바이낸스 API에서 BTC, ETH, SOL 가격 가져오기
     const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+    
+    // 캐시를 방지하기 위해 { cache: 'no-store' } 추가
     const requests = symbols.map(s => 
-      fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`)
+      fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`, { cache: 'no-store' })
         .then(res => res.json())
     );
 
     const results = await Promise.all(requests);
     
-    // 사용하기 편하게 가공
+    // 데이터 추출 함수 (안전장치 추가)
+    const getPrice = (obj: any) => {
+      const p = parseFloat(obj?.price);
+      return isNaN(p) ? "0.00" : p.toFixed(2);
+    };
+
     const prices = {
-      btc: parseFloat(results[0].price).toFixed(2),
-      eth: parseFloat(results[1].price).toFixed(2),
-      sol: parseFloat(results[2].price).toFixed(2),
+      btc: getPrice(results[0]),
+      eth: getPrice(results[1]),
+      sol: getPrice(results[2]),
       time: new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5)
     };
 
     return NextResponse.json(prices);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch" }, { status: 500 });
+    console.error("Binance API Error:", error);
+    return NextResponse.json({ btc: "0.00", eth: "0.00", sol: "0.00", time: "--:--" });
   }
 }

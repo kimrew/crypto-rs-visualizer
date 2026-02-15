@@ -1,72 +1,63 @@
-'use client';
-import React, { useState, useEffect } from 'react';
+// app/page.tsx (주요 변경 부분)
+
+// ... 기존 상단 코드 ...
 
 export default function Home() {
   const [matrix, setMatrix] = useState<any[]>([]);
   const [timeBar, setTimeBar] = useState('1H');
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/market?bar=${timeBar}`);
-      const data = await res.json();
-      if (data.matrix) setMatrix(data.matrix);
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000); // 1분마다 갱신
-    return () => clearInterval(interval);
-  }, [timeBar]);
-
-  // ✨ 강도에 따른 색상 함수 (0=회색, 상승=빨강, 하락=파랑)
-  const getCellColor = (change: number) => {
-    const abs = Math.min(Math.abs(change) * 40, 255); // 강도 조절
-    if (change > 0.05) return `rgb(${abs + 50}, 50, 50)`; // 빨강 계열
-    if (change < -0.05) return `rgb(50, 50, ${abs + 50})`; // 파랑 계열
-    return '#222'; // 0근처는 회색(어두운색)
-  };
+  // ... fetchData 로직 동일 (timeBar 의존성 유지) ...
 
   return (
     <div className="p-4 bg-black min-h-screen text-gray-300 font-mono text-[10px]">
       <header className="flex justify-between items-center mb-6 border-b border-gray-800 pb-2">
-        <h1 className="text-sm font-bold text-white uppercase tracking-tighter">Money Flow Timeline ({timeBar})</h1>
-        <div className="flex gap-2">
-          {['1H', '4H', '1D'].map(bar => (
-            <button key={bar} onClick={() => setTimeBar(bar)} 
-              className={`px-3 py-1 rounded border ${timeBar === bar ? 'bg-white text-black' : 'border-gray-700'}`}>
+        <h1 className="text-sm font-bold text-white uppercase">Money Flow Timeline</h1>
+        
+        {/* 시간 단위 버튼 추가: 1W, 1M 포함 */}
+        <div className="flex gap-1">
+          {['1H', '4H', '1D', '1W', '1M'].map(bar => (
+            <button 
+              key={bar} 
+              onClick={() => { setTimeBar(bar); setMatrix([]); }} 
+              className={`px-2 py-1 rounded text-[9px] border ${
+                timeBar === bar ? 'bg-white text-black font-bold' : 'border-gray-700 text-gray-500'
+              } transition-all`}
+            >
               {bar}
             </button>
           ))}
         </div>
       </header>
 
-      {loading ? <div className="text-center py-20">Loading Market Matrix...</div> : (
-        <div className="overflow-x-auto">
+      {/* 테이블 영역 (기존과 동일하되, bar에 따라 X축 시간 표시가 연동됨) */}
+      {loading ? (
+        <div className="text-center py-20 animate-pulse text-gray-600">Syncing with OKX Matrix...</div>
+      ) : (
+        <div className="overflow-x-auto scrollbar-hide">
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="sticky left-0 bg-black p-1 text-left border border-gray-800 w-16">Coin</th>
+                <th className="sticky left-0 bg-black p-1 text-left border border-gray-800 w-16 z-10">Asset</th>
                 {matrix[0]?.history.map((h: any, i: number) => (
-                  <th key={i} className="p-1 border border-gray-800 rotate-45 h-12 min-w-[30px]">{h.time}</th>
+                  <th key={i} className="p-1 border border-gray-800 text-[8px] font-thin text-gray-500">
+                    {h.time}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {matrix.map((row: any) => (
-                <tr key={row.symbol} className="h-6">
-                  <td className="sticky left-0 bg-black p-1 font-bold border border-gray-800 text-white shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                <tr key={row.symbol} className="h-5">
+                  <td className="sticky left-0 bg-black p-1 font-bold border border-gray-800 text-white z-10">
                     {row.symbol}
                   </td>
                   {row.history.map((cell: any, i: number) => (
                     <td 
                       key={i}
-                      className="border border-black/50 transition-colors duration-500 hover:border-white"
+                      className="border border-black/30"
                       style={{ backgroundColor: getCellColor(cell.change) }}
-                      title={`${row.symbol} | ${cell.time} | ${cell.change.toFixed(2)}%`}
+                      title={`${row.symbol}: ${cell.change.toFixed(2)}%`}
                     />
                   ))}
                 </tr>
@@ -76,11 +67,17 @@ export default function Home() {
         </div>
       )}
       
-      <div className="mt-8 flex gap-4 items-center justify-end text-[9px] text-gray-500">
-        <span>Strong Sell (Dark Blue)</span>
-        <div className="w-20 h-2 bg-gradient-to-r from-blue-800 via-gray-800 to-red-800"></div>
-        <span>Strong Buy (Dark Red)</span>
-      </div>
+      {/* 하단 범례 추가 */}
+      <footer className="mt-10 pt-4 border-t border-gray-900 flex justify-between items-center opacity-50 text-[8px]">
+        <div>Data: OKX Spot Market Matrix</div>
+        <div className="flex items-center gap-2">
+          <span>Weak</span>
+          <div className="w-24 h-1 bg-gradient-to-r from-blue-900 via-gray-900 to-red-900"></div>
+          <span>Strong</span>
+        </div>
+      </footer>
     </div>
   );
 }
+
+// getCellColor 함수는 기존과 동일

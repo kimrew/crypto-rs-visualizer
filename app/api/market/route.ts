@@ -1,49 +1,67 @@
+import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  // 지원 단위: 1H, 4H, 1D, 1W, 1M
-  const bar = searchParams.get('bar') || '1H'; 
+  // bar 파라미터에 따라 조회 기간을 결정 (기본 1H 로직)
+  const bar = searchParams.get('bar') || '1H';
 
   try {
-    const tickerRes = await fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT');
-    const tickerJson = await tickerRes.json();
-    
-    // 시총/거래대금 상위 30개 코인 (개수는 필요에 따라 조절 가능)
-    const topSymbols = tickerJson.data
-      .filter((t: any) => t.instId.endsWith('-USDT'))
-      .sort((a: any, b: any) => parseFloat(b.vol24h) - parseFloat(a.vol24h))
-      .slice(0, 30);
+    /**
+     * 1. DB에서 최신 데이터 가져오기
+     * - 최근 30개의 타임스탬프(수집 시점)에 해당하는 데이터를 가져옵니다.
+     * - 5분마다 수집한다고 가정할 때, 약 150분치 데이터를 가져오게 됩니다.
+     */
+    const { rows } = await sql`
+      SELECT symbol, change_p, timestamp 
+      FROM market_data 
+      WHERE timestamp IN (
+        SELECT DISTINCT timestamp 
+        FROM market_data 
+        ORDER BY timestamp DESC 
+        LIMIT 30
+      )
+      ORDER BY timestamp ASC, symbol ASC;
+    `;
 
-    const matrix = await Promise.all(topSymbols.map(async (s: any) => {
-      // 바뀐 단위(bar)를 그대로 API에 전달 (1W, 1M은 OKX 공식 지원 규격임)
-      const candleRes = await fetch(
-        `https://www.okx.com/api/v5/market/candles?instId=${s.instId}&bar=${bar}&limit=30`
-      );
-      const candleJson = await candleRes.json();
-      
-      if (!candleJson.data) return null;
+    if (!rows || rows.length === 0) {
+      return NextResponse.json({ matrix: [], message: "No data in DB yet." });
+    }
 
-      const history = candleJson.data.reverse().map((c: any) => {
-        const timestamp = parseInt(c[0]);
-        const open = parseFloat(c[1]);
-        const close = parseFloat(c[4]);
-        const change = ((close - open) / open) * 100;
-        
-        // 날짜 표시 형식 최적화 (단위에 따라 날짜/시간 다르게 표시)
-        const dateObj = new Date(timestamp);
-        const timeStr = (bar === '1W' || bar === '1M' || bar === '1D') 
-          ? `${dateObj.getMonth() + 1}/${dateObj.getDate()}`
-          : `${dateObj.getHours()}:00`;
+    /**
+     * 2. 데이터를 프론트엔드용 Matrix 구조로 변환
+     * 목표 구조: [{ symbol: 'BTC', history: [{ time: '12:00', change: 1.2 }, ...] }, ...]
+     */
+    const matrixMap: Record<string, any> = {};
 
-        return { time: timeStr, change };
+    rows.forEach((row) => {
+      if (!matrixMap[row.symbol]) {
+        matrixMap[row.symbol] = {
+          symbol: row.symbol,
+          history: [],
+        };
+      }
+
+      // 시간 표시 포맷 설정
+      const dateObj = new Date(row.timestamp);
+      const timeLabel = bar === '1D' || bar === '1W' || bar === '1M'
+        ? `${dateObj.getMonth() + 1}/${dateObj.getDate()}`
+        : `${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+
+      matrixMap[row.symbol].history.push({
+        time: timeLabel,
+        change: parseFloat(row.change_p),
       });
+    });
 
-      return { symbol: s.instId.split('-')[0], history };
-    }));
+    // 객체를 배열로 변환
+    const matrix = Object.values(matrixMap);
 
-    return NextResponse.json({ matrix: matrix.filter(m => m !== null) });
-  } catch (error) {
-    return NextResponse.json({ error: "Fetch failed" }, { status: 500 });
+    return NextResponse.json({ matrix });
+  } catch (error: any) {
+    console.error("Database Fetch Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

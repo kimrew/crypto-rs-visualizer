@@ -2,27 +2,33 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // 바이낸스 대신 코인게코 API 사용
-    const res = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd',
-      { next: { revalidate: 0 } }
-    );
-    
-    const data = await res.json();
+    // OKX 모든 티커 데이터 (SPOT 기준)
+    const res = await fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT', {
+      next: { revalidate: 0 }
+    });
+
+    const json = await res.json();
+    if (json.code !== '0') throw new Error('OKX API Error');
+
+    // USDT 페어만 필터링하고 데이터 정제
+    const tickers = json.data
+      .filter((t: any) => t.instId.endsWith('-USDT'))
+      .map((t: any) => ({
+        symbol: t.instId.split('-')[0],
+        price: parseFloat(t.last),
+        vol: parseFloat(t.vol24h), // 24시간 거래량
+        change: parseFloat(t.last) / parseFloat(t.open24h) - 1 // 변화율
+      }));
+
+    // 전체 시장 강도 계산 (평균 변화율)
+    const avgChange = tickers.reduce((a: any, b: any) => a + b.change, 0) / tickers.length;
 
     return NextResponse.json({
-      btc: data.bitcoin.usd.toFixed(2),
-      eth: data.ethereum.usd.toFixed(2),
-      sol: data.solana.usd.toFixed(2),
+      tickers,
+      avgChange,
       time: new Date().toLocaleTimeString('en-GB', { hour12: false })
     });
   } catch (error) {
-    // 실패 시 로컬에서처럼 작동하는 것처럼 보이게 하는 가짜 데이터 (데모용)
-    return NextResponse.json({
-      btc: (65000 + Math.random() * 10).toFixed(2),
-      eth: (3500 + Math.random() * 5).toFixed(2),
-      sol: (140 + Math.random() * 2).toFixed(2),
-      time: new Date().toLocaleTimeString('en-GB', { hour12: false })
-    });
+    return NextResponse.json({ error: "OKX Fetch Failed" }, { status: 500 });
   }
 }

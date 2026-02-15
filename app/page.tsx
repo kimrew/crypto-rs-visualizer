@@ -1,70 +1,80 @@
-"use client";
+'use client';
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Home() {
-  const [data, setData] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [currentTickers, setCurrentTickers] = useState<any[]>([]);
+
+  const fetchData = async () => {
+    try {
+      const res = await fetch('/api/market');
+      const data = await res.json();
+      if (data.error) return;
+
+      setCurrentTickers(data.tickers);
+      setHistory(prev => {
+        const updated = [...prev, { time: data.time, avg: data.avgChange * 100 }];
+        return updated.length > 50 ? updated.slice(1) : updated;
+      });
+    } catch (e) { console.error(e); }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // 주소를 아래처럼 '/api/market'으로만 단순하게 적어보세요.
-        const res = await fetch('/api/market', { cache: 'no-store' });
-        const newItem = await res.json();
-        
-        // 이 newItem이 잘 들어오는지 확인하는 게 핵심입니다.
-        if (newItem && newItem.btc !== "0.01") { 
-          setData(prev => {
-            const updated = [...prev, newItem];
-            return updated.length > 20 ? updated.slice(1) : updated;
-          });
-        }
-      } catch (e) {
-        console.error("Fetch error:", e);
-      }
-    };
-
-    const interval = setInterval(fetchData, 5000);
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
 
+  // 강도에 따른 색상 계산
+  const getIntensityColor = (change: number) => {
+    const val = change * 100;
+    if (val > 1) return '#ff0000'; // 강세 (빨강)
+    if (val < -1) return '#0000ff'; // 약세 (파랑)
+    return '#444444'; // 횡보 (회색)
+  };
+
   return (
-    <main className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 flex items-center gap-3">
-          <Activity className="text-green-400 w-8 h-8" /> 
-          Crypto Real-time Tracker
-        </h1>
+    <div className="p-6 bg-black min-h-screen text-gray-200">
+      <header className="mb-8 border-b border-gray-800 pb-4">
+        <h1 className="text-xl font-mono">OKX MARKET STRENGTH INDEX</h1>
+        <p className="text-sm text-gray-500">Global Average Change: {history[history.length-1]?.avg.toFixed(4)}%</p>
+      </header>
 
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          {['BTC', 'ETH', 'SOL'].map((coin) => (
-            <div key={coin} className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-              <p className="text-zinc-400 text-sm font-medium">{coin} Price</p>
-              <p className="text-2xl font-mono mt-1">
-                {/* NaN이거나 데이터가 없으면 'Updating...' 표시 */}
-                {data.length > 0 && data[data.length-1][coin.toLowerCase()] !== "NaN" 
-                  ? `$${data[data.length-1][coin.toLowerCase()]}` 
-                  : 'Updating...'}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="h-[400px] bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-2xl">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-              <XAxis dataKey="time" stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px'}} />
-              <Line type="monotone" dataKey="btc" stroke="#F7931A" strokeWidth={3} dot={false} animationDuration={300} />
-              <Line type="monotone" dataKey="eth" stroke="#627EEA" strokeWidth={3} dot={false} animationDuration={300} />
-              <Line type="monotone" dataKey="sol" stroke="#14F195" strokeWidth={3} dot={false} animationDuration={300} />
-            </LineChart>
+      {/* 상단: 전체 시장 강도 면적 그래프 */}
+      <div className="bg-gray-900/50 p-4 rounded-xl mb-8 border border-gray-800">
+        <h2 className="text-xs uppercase tracking-widest mb-4 text-gray-400">Total Market Momentum</h2>
+        <div className="h-48">
+          <ResponsiveContainer>
+            <AreaChart data={history}>
+              <XAxis dataKey="time" hide />
+              <YAxis domain={['auto', 'auto']} hide />
+              <Tooltip labelStyle={{color: 'black'}} />
+              <Area 
+                type="stepAfter" 
+                dataKey="avg" 
+                stroke="#fff" 
+                fill={history[history.length-1]?.avg > 0 ? "#ff0000" : "#0000ff"} 
+                fillOpacity={0.3}
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
-    </main>
+
+      {/* 하단: 전체 상장 코인 히트맵 (마이너 알트 포함) */}
+      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-2">
+        {currentTickers.sort((a,b) => b.vol - a.vol).slice(0, 100).map((coin) => (
+          <div 
+            key={coin.symbol} 
+            className="p-2 rounded text-[10px] font-mono flex flex-col justify-between transition-colors duration-500"
+            style={{ backgroundColor: getIntensityColor(coin.change), opacity: 0.8 }}
+          >
+            <span className="font-bold">{coin.symbol}</span>
+            <span>{(coin.change * 100).toFixed(2)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
